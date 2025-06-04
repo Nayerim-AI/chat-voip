@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Call</title>
+</head>
+<body>
+    <h2>WebRTC Call</h2>
+    <video id="localVideo" autoplay muted></video>
+    <video id="remoteVideo" autoplay></video>
+    <button onclick="startCall()">Start Call</button>
+
+    <script>
+        const roomName = "room1";  
+        const signalingServer = `ws://${window.location.host}/ws/call/${roomName}/`;
+        const ws = new WebSocket(signalingServer);
+
+        let localStream;
+        let peerConnection;
+        const iceServers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+
+        ws.onopen = () => {
+            console.log("✅ WebSocket Connected to:", signalingServer);
+        };
+        ws.onerror = (error) => {
+            console.error("❌ WebSocket Error:", error);
+        };
+        ws.onclose = () => {
+            console.warn("⚠️ WebSocket Closed");
+        };
+
+        ws.onmessage = async (event) => {
+            console.log("📩 WebSocket Message Received:", event.data);
+            const data = JSON.parse(event.data);
+        
+            if (!peerConnection) {
+                console.log("📡 Membuat PeerConnection untuk menerima offer");
+                peerConnection = new RTCPeerConnection(iceServers);
+        
+                peerConnection.ontrack = (event) => {
+                    console.log("📡 Menerima track dari remote peer:", event.streams[0]);
+                    document.getElementById("remoteVideo").srcObject = event.streams[0];
+                };
+        
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        console.log("❄️ ICE Candidate ditemukan:", event.candidate);
+                        ws.send(JSON.stringify({ candidate: event.candidate }));
+                    }
+                };
+        
+                // Tambahkan ini untuk melihat perubahan state ICE Connection
+                peerConnection.oniceconnectionstatechange = () => {
+                    console.log("🔄 ICE Connection State:", peerConnection.iceConnectionState);
+                };
+            }
+        
+            if (data.offer) {
+                console.log("📥 Received Offer:", data.offer);
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                ws.send(JSON.stringify({ answer }));
+                console.log("📤 Sent Answer:", answer);
+            } else if (data.answer) {
+                console.log("📥 Received Answer:", data.answer);
+                if (peerConnection.signalingState !== "stable") {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+                } else {
+                    console.warn("⚠️ Ignoring Answer: PeerConnection already stable");
+                }
+            } else if (data.candidate) {
+                console.log("📥 Received ICE Candidate:", data.candidate);
+                try {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                    console.log("✅ ICE Candidate ditambahkan!");
+                } catch (error) {
+                    console.error("❌ Gagal menambahkan ICE Candidate:", error);
+                }
+            }
+        };
+        
+        async function startCall() {
+            console.log("📞 Start Call button clicked!");
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                console.log("📷 Kamera & 🎙️ Mikrofon berhasil diakses!", localStream);
+                document.getElementById("localVideo").srcObject = localStream;
+            } catch (error) {
+                console.error("❌ Gagal mendapatkan akses ke kamera/mikrofon:", error);
+                return;
+            }
+            peerConnection = new RTCPeerConnection(iceServers);
+            console.log("📡 PeerConnection dibuat:", peerConnection);
+        
+            localStream.getTracks().forEach(track => {
+                console.log("🎥 Menambahkan track ke PeerConnection:", track);
+                peerConnection.addTrack(track, localStream);
+            });
+        
+            peerConnection.ontrack = (event) => {
+                console.log("📡 Menerima track dari remote peer:", event.streams[0]);
+                document.getElementById("remoteVideo").srcObject = event.streams[0];
+            };
+        
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    console.log("❄️ ICE Candidate ditemukan:", event.candidate);
+                    ws.send(JSON.stringify({ candidate: event.candidate }));
+                }
+            };
+        
+            if (ws.readyState !== WebSocket.OPEN) {
+                console.log("⏳ Menunggu WebSocket terbuka...");
+                await new Promise(resolve => ws.addEventListener("open", resolve));
+            }
+
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            console.log("📨 Mengirim offer ke server:", offer);
+            ws.send(JSON.stringify({ offer }));
+        }
+    </script>
+</body>
+</html>

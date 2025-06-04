@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Private Chat</title>
+</head>
+<body>
+    <h1>Private Chat: {{ user1 }} & {{ user2 }}</h1>
+    <div id="chat-box"></div>
+    <input id="message-input" type="text" placeholder="Type a message...">
+    <button id="send-button">Send</button>
+
+    <script>
+        const user1 = "{{ user1 }}";
+        const user2 = "{{ user2 }}";
+        const sender = prompt("Enter your username:");
+        if (![user1, user2].includes(sender)) {
+            alert("You are not part of this chat!");
+            throw new Error("Unauthorized user");
+        }
+
+        const chatSocket = new WebSocket(`ws://${window.location.host}/ws/dm/${user1}/${user2}/`);
+
+        chatSocket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            document.getElementById("chat-box").innerHTML += `<p><strong>${data.sender}:</strong> ${data.message}</p>`;
+        };
+
+        document.getElementById("send-button").onclick = function() {
+            const message = document.getElementById("message-input").value;
+            chatSocket.send(JSON.stringify({ "message": message, "sender": sender }));
+            document.getElementById("message-input").value = "";
+        };
+    </script>
+</body>
+</html>

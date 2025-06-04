@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realtime Chat</title>
+    {% load static %}
+    <link rel="stylesheet" type="text/css" href="{% static 'chat/style.css' %}">
+
+</head>
+<body>
+    <div class="chat-container">
+        <!-- Sidebar User List -->
+        <div class="sidebar">
+            <h3>Users</h3>
+            <p><strong>Logged in as:</strong> {{ request.user.username }}</p>  <!-- Menampilkan user yang login -->
+            <ul id="user-list">
+                {% for user in users %}
+                <li class="user-item" onclick="openDM('{{ user.username }}')">
+                    <span class="status-icon {% if user.is_active %}online{% else %}offline{% endif %}"></span>
+                    {{ user.username }}
+                </li>
+                {% empty %}
+                <li>No other users online</li>  <!-- Tampilkan pesan jika tidak ada user lain -->
+                {% endfor %}
+            </ul>
+        </div>
+        
+        
+        
+        
+        <!-- Chat Section -->
+        <div class="chat-section">
+            <div class="chat-header">
+                <h2>Global Chat</h2>
+            </div>
+            <div id="chat-box">
+                {% for message in messages %}
+                    <div class="chat-message">
+                        <strong>{{ message.sender.username }}</strong>: {{ message.message }} <br>
+                        <small>{{ message.timestamp }}</small>
+                    </div>
+                {% endfor %}
+            </div>
+            
+        </div>
+    </div>
+
+    <script>
+        const socket = new WebSocket(`ws://${window.location.host}/ws/chat/global/`);
+        const chatBox = document.getElementById("chat-box");
+        function openDM(username) {
+            let currentUser = "{{ request.session.username }}";  // Ambil user yang login
+            window.location.href = `/dm/${currentUser}/${username}/`;  // Arahkan ke private chat
+        }
+        socket.onmessage = function(event) {
+            let data = JSON.parse(event.data);
+            let chatBox = document.getElementById("chat-box");
+            let newMessage = document.createElement("div");
+            newMessage.classList.add("chat-message");
+            newMessage.innerHTML = `<strong>${data.username}:</strong> ${data.message} <br><small>${data.timestamp}</small>`;
+            
+            chatBox.appendChild(newMessage);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        };
+        
+        function sendMessage() {
+            let input = document.getElementById("message-input");
+            socket.send(JSON.stringify({"message": input.value}));
+            input.value = "";
+        }
+    </script>
+</body>
+</html>
